@@ -255,6 +255,9 @@ function(package_project)
       "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/lib"
     )
   endif()
+  if(CONAN_RUNTIME_LIB_DIRS)
+    list(APPEND runtime_dirs ${CONAN_RUNTIME_LIB_DIRS})
+  endif()
   set(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS)
   if(runtime_dirs)
     set(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS
