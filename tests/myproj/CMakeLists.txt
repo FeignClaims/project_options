@@ -24,7 +24,17 @@ set(VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_triplets")
 run_vcpkg(VCPKG_URL "https://github.com/microsoft/vcpkg.git" VCPKG_REV
           "0cb95c860ea83aafc1b24350510b30dec535989a" ENABLE_VCPKG_UPDATE
 )
-run_conan()
+if(WIN32)
+  run_conan(
+    INSTALL_ARGS
+      --build=missing
+      -c tools.system.package_manager:mode=install
+      -c tools.system.package_manager:sudo=True
+      -c "tools.cmake.cmaketoolchain:extra_variables={'MSVC':'ON'}"
+  )
+else()
+  run_conan()
+endif()
 
 project(myproj VERSION 0.2.0 LANGUAGES CXX C)
 
@@ -107,15 +117,15 @@ if(WIN32)
   target_compile_definitions(main PRIVATE DOCOPT_DLL)
 endif()
 
-if(WIN32 AND CONAN_RUNTIME_LIB_DIRS)
-  foreach(runtime_dir IN LISTS CONAN_RUNTIME_LIB_DIRS)
-    add_custom_command(
-      TARGET main
-      POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory "${runtime_dir}" "$<TARGET_FILE_DIR:main>"
-      VERBATIM
-    )
-  endforeach()
+if(WIN32)
+  add_custom_command(
+    TARGET main
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:docopt::docopt>"
+            "$<TARGET_FILE_DIR:main>"
+    VERBATIM
+  )
 endif()
 
 target_link_system_libraries(main PRIVATE fmt::fmt Eigen3::Eigen docopt)
