@@ -103,7 +103,7 @@ target_find_dependencies(main
     PACKAGE docopt CONFIG
 )
 
-if(WIN32 AND MSVC)
+if(WIN32)
   target_compile_definitions(main PRIVATE DOCOPT_DLL)
 endif()
 
