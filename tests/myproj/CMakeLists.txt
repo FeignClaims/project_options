@@ -103,6 +103,21 @@ target_find_dependencies(main
     PACKAGE docopt CONFIG
 )
 
+if(WIN32 AND MSVC)
+  target_compile_definitions(main PRIVATE DOCOPT_DLL)
+endif()
+
+if(WIN32 AND CONAN_RUNTIME_LIB_DIRS)
+  foreach(runtime_dir IN LISTS CONAN_RUNTIME_LIB_DIRS)
+    add_custom_command(
+      TARGET main
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory "${runtime_dir}" "$<TARGET_FILE_DIR:main>"
+      VERBATIM
+    )
+  endforeach()
+endif()
+
 target_link_system_libraries(main PRIVATE fmt::fmt Eigen3::Eigen docopt)
 
 add_subdirectory(libs)
