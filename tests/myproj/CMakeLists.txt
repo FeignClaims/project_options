@@ -28,10 +28,13 @@ run_vcpkg(VCPKG_URL "https://github.com/microsoft/vcpkg.git" VCPKG_REV
 if(WIN32)
   run_conan(
     INSTALL_ARGS
-      --build=missing
-      -c tools.system.package_manager:mode=install
-      -c tools.system.package_manager:sudo=True
-      -c "tools.cmake.cmaketoolchain:extra_variables={'MSVC':'ON'}"
+    --build=missing
+    -c
+    tools.system.package_manager:mode=install
+    -c
+    tools.system.package_manager:sudo=True
+    -c
+    "tools.cmake.cmaketoolchain:extra_variables={'MSVC':'ON'}"
   )
 else()
   run_conan()
@@ -39,7 +42,7 @@ endif()
 
 project(myproj VERSION 0.2.0 LANGUAGES CXX C)
 
-include(cmake/rpath.cmake)  # Set rpath for installed programs, used in runtime installation test
+include(cmake/rpath.cmake) # Set rpath for installed programs, used in runtime installation test
 
 set(PCH_HEADERS
     <Eigen/Dense>
@@ -107,11 +110,18 @@ project_options(
 add_executable(main ./src/main/main.cpp)
 target_link_libraries(main PRIVATE myproj_project_options myproj_project_warnings)
 
-target_find_dependencies(main
+target_find_dependencies(
+  main
   PUBLIC
-    PACKAGE fmt CONFIG
-    PACKAGE Eigen3 CONFIG
-    PACKAGE docopt CONFIG
+  PACKAGE
+  fmt
+  CONFIG
+  PACKAGE
+  Eigen3
+  CONFIG
+  PACKAGE
+  docopt
+  CONFIG
 )
 
 if(WIN32)

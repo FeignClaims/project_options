@@ -55,9 +55,7 @@ function(install_conan_runtime)
       continue()
     endif()
 
-    get_target_property(_runtime_already_installed "${_target_name}"
-                        _PROJECT_OPTIONS_CONAN_RUNTIME_INSTALLED
-    )
+    get_target_property(_runtime_already_installed "${_target_name}" _PROJECT_OPTIONS_CONAN_RUNTIME_INSTALLED)
     if(_runtime_already_installed)
       continue()
     endif()
@@ -70,32 +68,37 @@ function(install_conan_runtime)
     list(REMOVE_DUPLICATES _runtime_libraries)
     if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
       set(_runtime_copy_commands
-          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>"
-          COMMAND "${CMAKE_COMMAND}" -E copy -t "$<TARGET_FILE_DIR:${_target_name}>"
-                  "$<TARGET_RUNTIME_DLLS:${_target_name}>")
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>" COMMAND
+          "${CMAKE_COMMAND}" -E copy -t "$<TARGET_FILE_DIR:${_target_name}>"
+          "$<TARGET_RUNTIME_DLLS:${_target_name}>"
+      )
       set(_runtime_copy_options COMMAND_EXPAND_LISTS)
     else()
       if(NOT _runtime_libraries)
         continue()
       endif()
-      set(_runtime_copy_commands
-          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>")
+      set(_runtime_copy_commands COMMAND "${CMAKE_COMMAND}" -E make_directory
+                                 "$<TARGET_FILE_DIR:${_target_name}>"
+      )
       set(_runtime_copy_options)
     endif()
     foreach(_runtime_library IN LISTS _runtime_libraries)
-      list(APPEND _runtime_copy_commands
-           COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_runtime_library}"
-                   "$<TARGET_FILE_DIR:${_target_name}>")
+      list(
+        APPEND
+        _runtime_copy_commands
+        COMMAND
+        "${CMAKE_COMMAND}"
+        -E
+        copy_if_different
+        "${_runtime_library}"
+        "$<TARGET_FILE_DIR:${_target_name}>"
+      )
     endforeach()
 
     get_target_property(_target_source_dir "${_target_name}" SOURCE_DIR)
     if("${_target_source_dir}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
       add_custom_command(
-        TARGET "${_target_name}"
-        POST_BUILD
-        ${_runtime_copy_commands}
-        ${_runtime_copy_options}
-        VERBATIM
+        TARGET "${_target_name}" POST_BUILD ${_runtime_copy_commands} ${_runtime_copy_options} VERBATIM
       )
     else()
       get_property(_runtime_target_index GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX)
@@ -341,9 +344,8 @@ function(package_project)
   install_conan_runtime(${_targets_list})
   set(runtime_dirs)
   if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
-    list(APPEND runtime_dirs
-      "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/bin"
-      "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/lib"
+    list(APPEND runtime_dirs "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/bin"
+         "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/lib"
     )
   endif()
   if(CONAN_RUNTIME_LIB_DIRS)
@@ -351,10 +353,7 @@ function(package_project)
   endif()
   set(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS)
   if(runtime_dirs)
-    set(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS
-      RUNTIME_DEPENDENCY_SET
-      "${_PackageProject_SET}"
-    )
+    set(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS RUNTIME_DEPENDENCY_SET "${_PackageProject_SET}")
   endif()
 
   if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.23.0")
@@ -373,18 +372,20 @@ function(package_project)
                   ${FILE_SET_ARGS}
   )
   if(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS)
-    install(RUNTIME_DEPENDENCY_SET ${_PackageProject_SET}
+    install(
+      RUNTIME_DEPENDENCY_SET
+      ${_PackageProject_SET}
       PRE_EXCLUDE_REGEXES
-        [[api-ms-win-.*]]
-        [[ext-ms-.*]]
-        [[kernel32\.dll]]
-        [[(libc|libgcc_s|libgcc_s_seh|libm|libstdc\+\+|libc\+\+|libunwind)(-[0-9.]+)?\..*]]
+      [[api-ms-win-.*]]
+      [[ext-ms-.*]]
+      [[kernel32\.dll]]
+      [[(libc|libgcc_s|libgcc_s_seh|libm|libstdc\+\+|libc\+\+|libunwind)(-[0-9.]+)?\..*]]
       POST_EXCLUDE_REGEXES
-        [[.*(\\|/)system32(\\|/).*\.dll]]
-        [[^/lib.*]]
-        [[^/usr/lib.*]]
+      [[.*(\\|/)system32(\\|/).*\.dll]]
+      [[^/lib.*]]
+      [[^/usr/lib.*]]
       DIRECTORIES
-        ${runtime_dirs}
+      ${runtime_dirs}
     )
   endif()
 

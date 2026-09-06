@@ -19,7 +19,7 @@
 #include <cstring>
 
 static std::string const usage{
-R"(main.
+    R"(main.
 
     Usage:
       main
@@ -29,12 +29,13 @@ R"(main.
     Options:
       -h --help     Show this screen.
       --version     Show version.
-)"};
+)"
+};
 
-int main(int argc, char const* argv[]) {
-    std::map<std::string, docopt::value> args{docopt::docopt(usage, {argv + 1, argv + argc}, /*help=*/true, "main 1.0")};
-    for (auto const& arg : args) {
-      fmt::println("{}: {}", arg.first, fmt::streamed(arg.second));
+int main(int argc, char const *argv[]) {
+    std::map<std::string, docopt::value> args{ docopt::docopt(usage, { argv + 1, argv + argc }, /*help=*/true, "main 1.0") };
+    for (auto const &arg : args) {
+        fmt::println("{}: {}", arg.first, fmt::streamed(arg.second));
     }
 
     Eigen::VectorXd eigen_vec = Eigen::Vector3d(1, 2, 3);
