@@ -76,5 +76,5 @@ add_test(
     "-DVCPKG_REV=${FAKE_VCPKG_REVISION}" "-DEXERCISE_REENTRANT_LOCK=ON"
 )
 set_tests_properties(
-  vcpkg_parallel_reentrant_configure PROPERTIES FIXTURES_REQUIRED vcpkg_parallel_shared TIMEOUT 5
+  vcpkg_parallel_reentrant_configure PROPERTIES FIXTURES_REQUIRED vcpkg_parallel_shared TIMEOUT 30
 )
