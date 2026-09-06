@@ -118,17 +118,6 @@ if(WIN32)
   target_compile_definitions(main PRIVATE DOCOPT_DLL)
 endif()
 
-if(WIN32)
-  add_custom_command(
-    TARGET main
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:docopt>"
-            "$<TARGET_FILE_DIR:main>"
-    VERBATIM
-  )
-endif()
-
 target_link_system_libraries(main PRIVATE fmt::fmt Eigen3::Eigen docopt)
 
 add_subdirectory(libs)
