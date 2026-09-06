@@ -24,6 +24,7 @@ set(VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_triplets")
 run_vcpkg(VCPKG_URL "https://github.com/microsoft/vcpkg.git" VCPKG_REV
           "0cb95c860ea83aafc1b24350510b30dec535989a" ENABLE_VCPKG_UPDATE
 )
+# cspell:ignore cmaketoolchain
 if(WIN32)
   run_conan(
     INSTALL_ARGS
@@ -122,7 +123,7 @@ if(WIN32)
     TARGET main
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:docopt::docopt>"
+            "$<TARGET_FILE:docopt>"
             "$<TARGET_FILE_DIR:main>"
     VERBATIM
   )
