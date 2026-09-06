@@ -26,17 +26,112 @@ endfunction()
 
 #[[
 
+``_project_options_unwrap_conan_link_item``
+============================================
+
+Unwrap the generator expressions commonly used in target link interfaces. More complex
+expressions are conservatively ignored by the runtime dependency walk below.
+
+]]
+function(_project_options_unwrap_conan_link_item LINK_ITEM OUTPUT_VARIABLE)
+  set(_link_item "${LINK_ITEM}")
+  while(_link_item MATCHES "^\\$<(LINK_ONLY|BUILD_INTERFACE|INSTALL_INTERFACE|TARGET_NAME_IF_EXISTS):(.*)>")
+    set(_link_item "${CMAKE_MATCH_2}")
+  endwhile()
+  set(${OUTPUT_VARIABLE} "${_link_item}" PARENT_SCOPE)
+endfunction()
+
+#[[
+
+``_project_options_collect_conan_runtime_libraries``
+=====================================================
+
+Collect runtime locations from imported targets in a target's link graph. CMakeDeps exposes
+Conan shared libraries this way, while ``CONAN_RUNTIME_LIB_DIRS`` covers toolchains that expose
+the Conan runtime directories directly.
+
+]]
+function(_project_options_collect_conan_runtime_libraries TARGET_NAME OUTPUT_VARIABLE)
+  set(${OUTPUT_VARIABLE} "" PARENT_SCOPE)
+  set(_visited ${ARGN})
+
+  if(NOT TARGET "${TARGET_NAME}")
+    return()
+  endif()
+
+  get_target_property(_aliased_target "${TARGET_NAME}" ALIASED_TARGET)
+  if(_aliased_target AND NOT _aliased_target MATCHES "-NOTFOUND$")
+    set(_target_name "${_aliased_target}")
+  else()
+    set(_target_name "${TARGET_NAME}")
+  endif()
+
+  if("${_target_name}" IN_LIST _visited)
+    return()
+  endif()
+  list(APPEND _visited "${_target_name}")
+
+  set(_runtime_libraries)
+  get_target_property(_target_imported "${_target_name}" IMPORTED)
+  if(_target_imported)
+    get_target_property(_imported_configurations "${_target_name}" IMPORTED_CONFIGURATIONS)
+    if(_imported_configurations MATCHES "-NOTFOUND$")
+      set(_imported_configurations)
+    endif()
+    list(APPEND _imported_configurations DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    list(REMOVE_DUPLICATES _imported_configurations)
+
+    foreach(_configuration IN LISTS _imported_configurations)
+      get_target_property(_runtime_library "${_target_name}" "IMPORTED_LOCATION_${_configuration}")
+      if(_runtime_library AND NOT _runtime_library MATCHES "-NOTFOUND$"
+         AND _runtime_library MATCHES "\\.[dD][lL][lL]$")
+        list(APPEND _runtime_libraries "${_runtime_library}")
+      endif()
+    endforeach()
+
+    get_target_property(_runtime_library "${_target_name}" IMPORTED_LOCATION)
+    if(_runtime_library AND NOT _runtime_library MATCHES "-NOTFOUND$"
+       AND _runtime_library MATCHES "\\.[dD][lL][lL]$")
+      list(APPEND _runtime_libraries "${_runtime_library}")
+    endif()
+  endif()
+
+  foreach(_property LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+    get_target_property(_links "${_target_name}" "${_property}")
+    if("${_links}" STREQUAL "" OR "${_links}" MATCHES "-NOTFOUND$")
+      continue()
+    endif()
+
+    foreach(_link IN LISTS _links)
+      if("${_link}" STREQUAL "::@" OR "${_link}" MATCHES "^::@\\(.*\\)$")
+        continue()
+      endif()
+
+      _project_options_unwrap_conan_link_item("${_link}" _link_target)
+      if(TARGET "${_link_target}")
+        _project_options_collect_conan_runtime_libraries(
+          "${_link_target}" _linked_runtime_libraries ${_visited}
+        )
+        list(APPEND _runtime_libraries ${_linked_runtime_libraries})
+      endif()
+    endforeach()
+  endforeach()
+
+  list(REMOVE_DUPLICATES _runtime_libraries)
+  set(${OUTPUT_VARIABLE} "${_runtime_libraries}" PARENT_SCOPE)
+endfunction()
+
+#[[
+
 ``install_conan_runtime``
 =========================
 
-Copy Conan runtime DLLs next to binary targets after Conan has installed them.
-
-The Conan CMake toolchain exposes ``CONAN_RUNTIME_LIB_DIRS`` for this purpose. This helper is
+Copy Conan runtime DLLs next to binary targets after Conan has installed them. This helper is
 normally called by ``package_project`` and is safe to call more than once for the same target.
 
 ]]
 function(install_conan_runtime)
-  if(NOT WIN32 OR NOT CONAN_RUNTIME_LIB_DIRS)
+  if(NOT WIN32)
     return()
   endif()
 
@@ -64,23 +159,43 @@ function(install_conan_runtime)
       continue()
     endif()
 
-    get_property(_runtime_target_index GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX)
-    if(NOT _runtime_target_index)
-      set(_runtime_target_index 0)
+    _project_options_collect_conan_runtime_libraries("${_target_name}" _runtime_libraries)
+    foreach(_runtime_dir IN LISTS CONAN_RUNTIME_LIB_DIRS)
+      file(GLOB _runtime_directory_libraries LIST_DIRECTORIES false "${_runtime_dir}/*.dll")
+      list(APPEND _runtime_libraries ${_runtime_directory_libraries})
+    endforeach()
+    list(REMOVE_DUPLICATES _runtime_libraries)
+    if(NOT _runtime_libraries)
+      continue()
     endif()
-    math(EXPR _runtime_target_index "${_runtime_target_index} + 1")
-    set_property(GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX "${_runtime_target_index}")
-    set(_runtime_target "_project_options_conan_runtime_${_runtime_target_index}")
 
-    add_custom_target(
-      "${_runtime_target}"
-      COMMAND "${CMAKE_COMMAND}"
-              "-DPROJECT_OPTIONS_CONAN_RUNTIME_LIB_DIRS=${CONAN_RUNTIME_LIB_DIRS}"
-              "-DPROJECT_OPTIONS_CONAN_RUNTIME_DESTINATION=$<TARGET_FILE_DIR:${_target_name}>"
-              -P "${_PROJECT_OPTIONS_PACKAGE_PROJECT_MODULE_DIR}/copy_conan_runtime.cmake"
-      VERBATIM
-    )
-    add_dependencies("${_target_name}" "${_runtime_target}")
+    set(_runtime_copy_commands
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>")
+    foreach(_runtime_library IN LISTS _runtime_libraries)
+      list(APPEND _runtime_copy_commands
+           COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_runtime_library}"
+                   "$<TARGET_FILE_DIR:${_target_name}>")
+    endforeach()
+
+    get_target_property(_target_source_dir "${_target_name}" SOURCE_DIR)
+    if("${_target_source_dir}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+      add_custom_command(
+        TARGET "${_target_name}"
+        POST_BUILD
+        ${_runtime_copy_commands}
+        VERBATIM
+      )
+    else()
+      get_property(_runtime_target_index GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX)
+      if(NOT _runtime_target_index)
+        set(_runtime_target_index 0)
+      endif()
+      math(EXPR _runtime_target_index "${_runtime_target_index} + 1")
+      set_property(GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX "${_runtime_target_index}")
+      set(_runtime_target "_project_options_conan_runtime_${_runtime_target_index}")
+      add_custom_target("${_runtime_target}" ${_runtime_copy_commands} VERBATIM)
+      add_dependencies("${_target_name}" "${_runtime_target}")
+    endif()
     set_property(TARGET "${_target_name}" PROPERTY _PROJECT_OPTIONS_CONAN_RUNTIME_INSTALLED TRUE)
   endforeach()
 endfunction()
