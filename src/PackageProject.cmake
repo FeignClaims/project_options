@@ -159,18 +159,26 @@ function(install_conan_runtime)
       continue()
     endif()
 
-    _project_options_collect_conan_runtime_libraries("${_target_name}" _runtime_libraries)
+    set(_runtime_libraries)
     foreach(_runtime_dir IN LISTS CONAN_RUNTIME_LIB_DIRS)
       file(GLOB _runtime_directory_libraries LIST_DIRECTORIES false "${_runtime_dir}/*.dll")
       list(APPEND _runtime_libraries ${_runtime_directory_libraries})
     endforeach()
     list(REMOVE_DUPLICATES _runtime_libraries)
-    if(NOT _runtime_libraries)
-      continue()
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
+      set(_runtime_copy_commands
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>"
+          COMMAND "${CMAKE_COMMAND}" -E copy -t "$<TARGET_FILE_DIR:${_target_name}>"
+                  "$<TARGET_RUNTIME_DLLS:${_target_name}>")
+      set(_runtime_copy_options COMMAND_EXPAND_LISTS)
+    else()
+      if(NOT _runtime_libraries)
+        continue()
+      endif()
+      set(_runtime_copy_commands
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>")
+      set(_runtime_copy_options)
     endif()
-
-    set(_runtime_copy_commands
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>")
     foreach(_runtime_library IN LISTS _runtime_libraries)
       list(APPEND _runtime_copy_commands
            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_runtime_library}"
@@ -183,6 +191,7 @@ function(install_conan_runtime)
         TARGET "${_target_name}"
         POST_BUILD
         ${_runtime_copy_commands}
+        ${_runtime_copy_options}
         VERBATIM
       )
     else()
@@ -193,7 +202,7 @@ function(install_conan_runtime)
       math(EXPR _runtime_target_index "${_runtime_target_index} + 1")
       set_property(GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX "${_runtime_target_index}")
       set(_runtime_target "_project_options_conan_runtime_${_runtime_target_index}")
-      add_custom_target("${_runtime_target}" ${_runtime_copy_commands} VERBATIM)
+      add_custom_target("${_runtime_target}" ${_runtime_copy_commands} ${_runtime_copy_options} VERBATIM)
       add_dependencies("${_target_name}" "${_runtime_target}")
     endif()
     set_property(TARGET "${_target_name}" PROPERTY _PROJECT_OPTIONS_CONAN_RUNTIME_INSTALLED TRUE)
