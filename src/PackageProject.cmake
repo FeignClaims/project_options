@@ -2,6 +2,8 @@ include_guard()
 
 include("${CMAKE_CURRENT_LIST_DIR}/Utilities.cmake")
 
+set(_PROJECT_OPTIONS_PACKAGE_PROJECT_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 # Uses ycm (permissive BSD-3-Clause license) and ForwardArguments (permissive MIT license)
 
 function(get_property_of_targets)
@@ -20,6 +22,94 @@ function(get_property_of_targets)
   convert_genex_semicolons("${_Value}" _Value)
   list(REMOVE_DUPLICATES _Value)
   set(${args_OUTPUT} ${_Value} PARENT_SCOPE)
+endfunction()
+
+#[[
+
+``install_conan_runtime``
+=========================
+
+Copy Conan runtime DLLs next to binary targets after Conan has installed them. This helper is
+normally called by ``package_project`` and is safe to call more than once for the same target.
+
+]]
+function(install_conan_runtime)
+  if(NOT WIN32)
+    return()
+  endif()
+
+  foreach(_target_name IN LISTS ARGN)
+    if(NOT TARGET "${_target_name}")
+      message(WARNING "install_conan_runtime: ${_target_name} is not a target.")
+      continue()
+    endif()
+
+    get_target_property(_target_imported "${_target_name}" IMPORTED)
+    if(_target_imported)
+      message(WARNING "install_conan_runtime: ${_target_name} is imported; not copying next to it.")
+      continue()
+    endif()
+
+    get_target_property(_target_type "${_target_name}" TYPE)
+    if(NOT _target_type MATCHES "^(EXECUTABLE|SHARED_LIBRARY|MODULE_LIBRARY)$")
+      continue()
+    endif()
+
+    get_target_property(_runtime_already_installed "${_target_name}"
+                        _PROJECT_OPTIONS_CONAN_RUNTIME_INSTALLED
+    )
+    if(_runtime_already_installed)
+      continue()
+    endif()
+
+    set(_runtime_libraries)
+    foreach(_runtime_dir IN LISTS CONAN_RUNTIME_LIB_DIRS)
+      file(GLOB _runtime_directory_libraries LIST_DIRECTORIES false "${_runtime_dir}/*.dll")
+      list(APPEND _runtime_libraries ${_runtime_directory_libraries})
+    endforeach()
+    list(REMOVE_DUPLICATES _runtime_libraries)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
+      set(_runtime_copy_commands
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>"
+          COMMAND "${CMAKE_COMMAND}" -E copy -t "$<TARGET_FILE_DIR:${_target_name}>"
+                  "$<TARGET_RUNTIME_DLLS:${_target_name}>")
+      set(_runtime_copy_options COMMAND_EXPAND_LISTS)
+    else()
+      if(NOT _runtime_libraries)
+        continue()
+      endif()
+      set(_runtime_copy_commands
+          COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${_target_name}>")
+      set(_runtime_copy_options)
+    endif()
+    foreach(_runtime_library IN LISTS _runtime_libraries)
+      list(APPEND _runtime_copy_commands
+           COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_runtime_library}"
+                   "$<TARGET_FILE_DIR:${_target_name}>")
+    endforeach()
+
+    get_target_property(_target_source_dir "${_target_name}" SOURCE_DIR)
+    if("${_target_source_dir}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+      add_custom_command(
+        TARGET "${_target_name}"
+        POST_BUILD
+        ${_runtime_copy_commands}
+        ${_runtime_copy_options}
+        VERBATIM
+      )
+    else()
+      get_property(_runtime_target_index GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX)
+      if(NOT _runtime_target_index)
+        set(_runtime_target_index 0)
+      endif()
+      math(EXPR _runtime_target_index "${_runtime_target_index} + 1")
+      set_property(GLOBAL PROPERTY PROJECT_OPTIONS_CONAN_RUNTIME_TARGET_INDEX "${_runtime_target_index}")
+      set(_runtime_target "_project_options_conan_runtime_${_runtime_target_index}")
+      add_custom_target("${_runtime_target}" ${_runtime_copy_commands} ${_runtime_copy_options} VERBATIM)
+      add_dependencies("${_target_name}" "${_runtime_target}")
+    endif()
+    set_property(TARGET "${_target_name}" PROPERTY _PROJECT_OPTIONS_CONAN_RUNTIME_INSTALLED TRUE)
+  endforeach()
 endfunction()
 
 #[[.rst:
@@ -248,12 +338,16 @@ function(package_project)
   # Installation of package (compatible with vcpkg, etc)
   set(_targets_list ${_PackageProject_TARGETS})
   unset(_PackageProject_TARGETS) # to avoid ycm conflict
+  install_conan_runtime(${_targets_list})
   set(runtime_dirs)
   if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
     list(APPEND runtime_dirs
       "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/bin"
       "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/lib"
     )
+  endif()
+  if(CONAN_RUNTIME_LIB_DIRS)
+    list(APPEND runtime_dirs ${CONAN_RUNTIME_LIB_DIRS})
   endif()
   set(_PackageProject_RUNTIME_DEPENDENCY_SET_ARGS)
   if(runtime_dirs)
